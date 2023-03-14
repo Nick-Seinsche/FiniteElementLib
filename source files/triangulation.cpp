@@ -4,78 +4,81 @@
 #include <iostream>
 
 #include <map>
-#include <set>
 
 #include "../header files/triangulation.h"
+#include "../header files/io.h"
 
-using Eigen::Vector;
-using Eigen::Matrix;
+using Eigen::VectorXd;
+using Eigen::MatrixXd;
+using Eigen::MatrixXi;
 using Eigen::SparseMatrix;
 
-Triangulation::Triangulation(std::string path) {
+Triangulation::Triangulation(std::string name) {
+	std::ifstream file_c4n("meshes/" + name + "_c4n.tsv");
 	std::string line;
-	int num_nodes = 0;
-	int num_edges = 0;
-	int node_dim = 0;
-	int edge_dim = 0;
-	Matrix<double, Dynamic, Dynamic> c4n;
-	Matrix<int, Dynamic, Dynamic> n4e;
-	Matrix<int, Dynamic, Dynamic> Db;
+	std::vector<std::vector<double>> data;
 
-	std::ifstream infile("test_file.txt");
+	// Read the file line by line
+	while (std::getline(file_c4n, line)) {
+		std::vector<double> row_data;
+		std::string field;
 
-	while (std::getline(infile, line)) {
-		std::istringstream iss(line);
-		std::string key;
-		iss >> key;
+		// Parse each line by tab delimiter
+		std::istringstream line_stream(line);
+		while (std::getline(line_stream, field, '\t')) {
+			row_data.push_back(std::stod(field));
+		}
+		data.push_back(row_data);
+	}
 
-		//std::cout << key << std::endl;
+	// Create an Eigen MatrixXd from the parsed data
+	int num_nodes = static_cast<int>(data.size());
+	int node_dim = static_cast<int>(data[0].size());
+	MatrixXd c4n(num_nodes, node_dim);
+	for (int i = 0; i < num_nodes; i++) {
+		for (int j = 0; j < node_dim; j++) {
+			c4n(i, j) = data[i][j];
+		}
+	}
 
-		if (key == "node_dim") {
-			iss >> node_dim;
+	data.empty();
+
+	std::ifstream file_n4e("meshes/" + name + "_n4e.tsv");
+
+	// Read the file line by line
+	while (std::getline(file_n4e, line)) {
+		std::vector<double> row_data;
+		std::string field;
+
+		// Parse each line by tab delimiter
+		std::istringstream line_stream(line);
+		while (std::getline(line_stream, field, '\t')) {
+			row_data.push_back(std::stod(field));
 		}
-		else if (key == "num_nodes") {
-			iss >> num_nodes;
-			c4n.resize(num_nodes, node_dim);
-		}
-		else if (key == "c4n") {
-			for (int i = 0; i < num_nodes; i++) {
-				for (int j = 0; j < node_dim; j++) {
-					iss >> c4n(i, j);
-				}
-			}
-		}
-		else if (key == "edge_dim") {
-			iss >> edge_dim;
-		}
-		else if (key == "num_edges") {
-			iss >> num_edges;
-			n4e.resize(num_edges, edge_dim);
-		}
-		else if (key == "n4e") {
-			for (int i = 0; i < num_edges; i++) {
-				for (int j = 0; j < 3; j++) {
-					iss >> n4e(i, j);
-				}
-			}
-		}
-		else if (key == "db") {
-			Db.resize(num_nodes, node_dim);
-			for (int i = 0; i < num_nodes; i++) {
-				for (int j = 0; j < 2; j++) {
-					iss >> Db(i, j);
-				}
-			}
+		data.push_back(row_data);
+	}
+
+	// Create an Eigen MatrixXd from the parsed data
+	int num_edges = static_cast<int>(data.size());
+	int edge_dim = static_cast<int>(data[0].size());
+	Matrix<int, Dynamic, Dynamic> n4e(num_edges, edge_dim);
+	for (int i = 0; i < num_edges; i++) {
+		for (int j = 0; j < edge_dim; j++) {
+			n4e(i, j) = data[i][j];
 		}
 	}
 
 	this->node_dim = node_dim;
 	this->num_nodes = num_nodes;
+	this->c4n = c4n;
 	this->edge_dim = edge_dim;
 	this->num_edges = num_edges;
-	this->c4n = c4n;
 	this->n4e = n4e;
-	this->n4e = Db;
+	
+	std::cerr << "todo" << std::endl;
+
+	//this->Db = Db;
+	//this->Nb = Nb;
 }
 
 
@@ -87,13 +90,25 @@ Triangulation::Triangulation() {
 
 	Matrix<double, 4, 2> c4n{ {0, 0}, {1, 0}, {1, 1}, {0, 1} };
 	Matrix<int, 2, 3> n4e{ { 0, 1, 2 }, { 0, 2, 3 } };
-	Matrix<int, 4, 2> Db{ {0, 1}, {1, 2}, {2, 3}, {3, 0} };
-	//Matrix<int, 0, 0> Nb{ {} };
+	Matrix<int, 1, 2> Db{ {1, 2} };
+	Matrix<int, 3, 2> Nb{ {0, 1}, {2, 3}, {3, 0} };
 
 	this->c4n = c4n;
 	this->n4e = n4e;
 	this->Db = Db;
-	//this->Nb = Nb;
+	this->Nb = Nb;
+}
+
+Triangulation::Triangulation(MatrixXd c4n, MatrixXi n4e, MatrixXi Db, MatrixXi Nb) {
+	this->num_nodes = static_cast<int>(c4n.rows());
+	this->num_edges = static_cast<int>(n4e.rows());
+	this->node_dim = static_cast<int>(c4n.cols());
+	this->edge_dim = static_cast<int>(n4e.cols());
+
+	this->c4n = c4n;
+	this->n4e = n4e;
+	this->Db = Db;
+	this->Nb = Nb;
 }
 
 void Triangulation::uniform_refinement() {
@@ -101,6 +116,7 @@ void Triangulation::uniform_refinement() {
 	std::vector<VectorXd>c4n;
 	std::vector<Vector<int, Dynamic>> n4e;
 	std::vector<Vector<int, Dynamic>> Db;
+	std::vector<Vector<int, Dynamic>> Nb;
 
 	for (int i = 0; i < num_nodes; i++) {
 		c4n.push_back(this->c4n.row(i));
@@ -147,11 +163,25 @@ void Triangulation::uniform_refinement() {
 		}
 	}
 
-	for (int i = 0; i < this->Db.rows(); i++) {
-		Vector<int, Dynamic> v1{ {this->Db(i, 0), mpts[{this->Db(i, 0), this->Db(i, 1)}]} };
-		Vector<int, Dynamic> v2{ {mpts[{this->Db(i, 0), this->Db(i, 1)}], this->Db(i, 1)} };
-		Db.push_back(v1);
-		Db.push_back(v2);
+	if (node_dim == 1) {
+		std::cerr << "not implemented" << std::endl;
+	} else if (node_dim == 2) {
+		for (int i = 0; i < this->Db.rows(); i++) {
+			Vector<int, Dynamic> v1{ {this->Db(i, 0), mpts[{this->Db(i, 0), this->Db(i, 1)}]} };
+			Vector<int, Dynamic> v2{ {mpts[{this->Db(i, 0), this->Db(i, 1)}], this->Db(i, 1)} };
+			Db.push_back(v1);
+			Db.push_back(v2);
+		}
+
+		for (int i = 0; i < this->Nb.rows(); i++) {
+			Vector<int, Dynamic> v1{ {this->Nb(i, 0), mpts[{this->Nb(i, 0), this->Nb(i, 1)}]} };
+			Vector<int, Dynamic> v2{ {mpts[{this->Nb(i, 0), this->Nb(i, 1)}], this->Nb(i, 1)} };
+			Nb.push_back(v1);
+			Nb.push_back(v2);
+		}
+	}
+	else {
+		std::cerr << "not implemented" << std::endl;
 	}
 
 	MatrixXd c4n_red(num_nodes_red, node_dim);
@@ -172,76 +202,29 @@ void Triangulation::uniform_refinement() {
 		Db_red.row(i) = Db[i].transpose();
 	}
 
+	Matrix<int, Dynamic, Dynamic> Nb_red(Nb.size(), edge_dim - 1);
+
+	for (int i = 0; i < Nb.size(); i++) {
+		Nb_red.row(i) = Nb[i].transpose();
+	}
+
 	this->num_edges = num_edges_red;
 	this->num_nodes = num_nodes_red;
 	this->c4n = c4n_red;
 	this->n4e = n4e_red;
 	this->Db = Db_red;
+	this->Nb = Nb_red;
 }
 
 void Triangulation::export_tri(std::string name) {
 	// Open the output file
-	std::ofstream outfile_c4n("meshes/" + name + "_c4n.tsv");
-	if (!outfile_c4n.is_open()) {
-		std::cerr << "Failed to open output file c4n." << std::endl;
-		return;
-	}
+	IO::export_matrix_as_tsv<MatrixXd>(c4n, IO::TRIANGULATION, name + "_c4n");
+	
+	IO::export_matrix_as_tsv<MatrixXi>(n4e, IO::TRIANGULATION, name + "_n4e");
 
-	// Write the matrix to the output file in TSV format
-	for (int i = 0; i < c4n.rows(); i++) {
-		for (int j = 0; j < c4n.cols(); j++) {
-			outfile_c4n << c4n(i, j);
-			if (j < c4n.cols() - 1) {
-				outfile_c4n << "\t"; // use tab separator
-			}
-		}
-		outfile_c4n << std::endl;
-	}
+	IO::export_matrix_as_tsv<MatrixXi>(Db, IO::TRIANGULATION, name + "_db");
 
-	// Close the output file
-	outfile_c4n.close();
-
-	// Open the output file
-	std::ofstream outfile_n43("meshes/" + name + "_n4e.tsv");
-	if (!outfile_n43.is_open()) {
-		std::cerr << "Failed to open output file n4e." << std::endl;
-		return;
-	}
-
-	// Write the matrix to the output file in TSV format
-	for (int i = 0; i < n4e.rows(); i++) {
-		for (int j = 0; j < n4e.cols(); j++) {
-			outfile_n43 << n4e(i, j);
-			if (j < n4e.cols() - 1) {
-				outfile_n43 << "\t"; // use tab separator
-			}
-		}
-		outfile_n43 << std::endl;
-	}
-
-	// Close the output file
-	outfile_n43.close();
-
-	// Open the output file
-	std::ofstream outfile_db("meshes/" + name + "_db.tsv");
-	if (!outfile_db.is_open()) {
-		std::cerr << "Failed to open output file db." << std::endl;
-		return;
-	}
-
-	// Write the matrix to the output file in TSV format
-	for (int i = 0; i < Db.rows(); i++) {
-		for (int j = 0; j < Db.cols(); j++) {
-			outfile_db << Db(i, j);
-			if (j < Db.cols() - 1) {
-				outfile_db << "\t"; // use tab separator
-			}
-		}
-		outfile_db << std::endl;
-	}
-
-	// Close the output file
-	outfile_db.close();
+	IO::export_matrix_as_tsv<MatrixXi>(Nb, IO::TRIANGULATION, name + "_nb");
 
 	std::cout << "Successfully exported " + name << std::endl;
 }
